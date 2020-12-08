@@ -2,7 +2,6 @@
 # -*- coding: utf-8 -*-
 """
 Created on Thu Nov 26 18:17:44 2020
-
 @author: rajiv
 """
 
@@ -18,6 +17,8 @@ from tqdm import trange
 from numba import *
 from numba import cuda
 from math import floor, ceil
+from conv import conv1, conv2, conv3, pool1, pool2
+from utils import freq, get_dim, init_layers, lateral_inh
 
 train_data = '/home/rajiv/Documents/lectures/BIC/project_conv_sdnn/datasets/TrainingSet/Face/'
 test_data = '/home/rajiv/Documents/lectures/BIC/project_conv_sdnn/datasets/TestingSet/Face'
@@ -40,86 +41,21 @@ stdp_params = {
                'a_plus': np.array([.004, 0, .0004, 0, .0004], dtype=np.float32)
                }
 image_size = (400, 400)
+win = [0,15]
 
-
-class conv1(nn.Module):
-    def __init__(self):
-        super(conv1, self).__init__()
-        self.conv =  nn.Conv2d(in_channels = 1, out_channels = 4, kernel_size = (5,5), stride=1, padding = 2, bias=False)
-    
-    def forward(self, x):
-        out = self.conv(x)
-        return out
-
-class pool1(nn.Module):
-    def __init__(self):
-        super(pool1, self).__init__()
-    def forward(self, x):
-        out = F.max_pool2d(x, kernel_size = 7, stride = 6) 
-        return out
-
-class conv2(nn.Module):
-    def __init__(self):
-        super(conv2, self).__init__()
-        self.conv = nn.Conv2d(in_channels = 4, out_channels = 20, kernel_size = (17, 17), stride = 1, padding = 2, bias = False)
-        
-    def forward(self, x):
-        out = self.conv(x)
-        return out
-    
-class pool2(nn.Module):
-    def __init__(self):
-        super(pool2, self).__init__()
-    def forward(self,x):
-        out = F.max_pool2d(x, kernel_size = 5, stride = 5)
-        return out
-    
-class conv3(nn.Module):
-    def __init__(self):
-        super(conv3, self).__init__()
-        self.conv = nn.Conv2d(in_channels = 20, out_channels = 20, kernel_size =(5, 5), stride= 1, padding = 2, bias = False)
-        
-    def forward(self, x):
-        out = self.conv(x)
-        return out
-    
-    
-def get_dim(layer):
-    # 
-    temp = []
-    layer_len = len(layer)
-    for i in range(layer_len):
-        dim =  [i for i in layer[i].parameters()]
-        N, C, H, W = dim[0].shape
-        layer_index = [N, C, H, W]
-        temp.append(layer_index)
-    return temp
-
-def init_layers(H, W, C, total_time):
-    """
-        Initialise layers         
-    """
-    d_tmp = {}
-    H, W, C = H, W, C
-    d_tmp['S'] = np.zeros((H, W, C, total_time)).astype(np.uint8)
-    d_tmp['V'] = np.zeros((H, W, C, total_time)).astype(np.float32)
-    d_tmp['K_STDP'] = np.ones((H, W, C)).astype(np.uint8)
-    d_tmp['K_inh'] = np.ones((H, W)).astype(np.uint8)
-    layers.append(d_tmp)
-    return
-    
+   
 layers = []
 total_time = 15
-layer_1 = conv1()
-layers.append(init_layers(400, 400, 4, total_time))
-layer_2 = pool1()
-layers.append(init_layers(66, 66, 4, total_time))
-layer_3 = conv2()
-layers.append(init_layers(54, 54, 20, total_time))
-layer_4 = pool2()
-layers.append(init_layers(10, 10, 20, total_time))
-layer_5 = conv3()
-layers.append(init_layers(7, 8, 20, total_time = 15))
+layer_1 = conv1().to('cuda')
+layers.append(init_layers(total_time = total_time, C = 4, H = 400, W = 400))
+layer_2 = pool1().to('cuda')
+layers.append(init_layers(total_time = total_time, C = 4, H = 66, W = 66))
+layer_3 = conv2().to('cuda')
+layers.append(init_layers(total_time = total_time, C = 20, H = 54, W = 54))
+layer_4 = pool2().to('cuda')
+layers.append(init_layers(total_time = total_time, C = 20, H = 10, W = 10))
+layer_5 = conv3().to('cuda')
+layers.append(init_layers(total_time = total_time, C = 20, H = 6, W = 6))
 network = [layer_1, layer_2, layer_3, layer_4, layer_5]
 network_len = len(network)
 layer_filt_dimension = get_dim(network[0::2])
@@ -131,53 +67,84 @@ thds_per_dim = 10
 
 for j in trange(data_len):
     image = DoG(image_name = image_names[j])
+    image = np.reshape(image, (160000,))
     # code to change the image to total_time 
-    
+    image = freq(15, image, 0.05)
     # Codde ends here
     image = torch.from_numpy(image).to('cuda')
     image = image.float()
     
-    for i in range(stdp_params['max_iter']):
-        for t in range(total_time):
-            ## Slice the image of the first time step
-            for l in range(network_len):
-                if network[l].__class__.__name__ == "conv1":
-                    V = network[l](image)
-                    C, H, W = 4, 400, 400 
-                    S = (V > thresh[0]) * 1
-                    ## code for lateral inhibition starts here##
-                    S = lateral_inh()
-                    ## Code for lateral inhibition end here   ##
-                    S = S.float()
-                elif network[l].__class__.__name__ == "pool1":
-                    S = network[l](S)
-                    ## code for lateral inhibition starts here##
-                    
-                    ## Code for lateral inhibition end here   ##
-                    S = S.float()
-                elif network[l].__class__.__name__ == "conv2":
-                    V = network[l](S)
-                    C, H, W = 20, 54, 54
-                    S = (V > thresh[1]) * 1
-                    ## code for lateral inhibition starts here##
-                    
-                    ## Code for lateral inhibition end here   ##
-                    S = S.float()
-                elif network[l].__class__.__name__ == "pool2":
-                    S = network[l](S)
-                    ## code for lateral inhibition starts here##
+    #for i in range(stdp_params['max_iter']):
+    for t in range(total_time):
+        ## Slice the image of the first time step
+        for l in range(network_len):
+            V = layers[l]['V'][t-1, :, :, :]
+            S = layers[l]['S'][t, :, :, :]
+            K_inh =layers[l]['K_inh']
+            if network[l].__class__.__name__ == "conv1":
+                img = image[t,:,:,:].unsqueeze(0)
+                V = network[l](img)
+                V = V.permute(0, 3, 2, 1)
+                S = (V > torch.Tensor([10.0]).to('cuda')).float()*1
+                N, H, W, C = V.shape
+                layers[l]['V'][t,:,:,:] = V[0]
 
-                    ## Code for lateral inhibition end here   ##
-                    S = S.float()
-                elif network[l].__class__.__name__ == "conv3":
-                    V = network[l](S)
-                    C, H, W = 20, 7, 8
-                    S = (V > thresh[2]) * 1
-                    ## code for lateral inhibition starts here##
-                    
-                    ## Code for lateral inhibition end here   ##
-                    S = S.float()
-                else:
-                    print("The layer does not exist")
-            ### start the STDP Learning here ###
-        
+                S = S.cpu().data.numpy()
+                V = V.cpu().data.numpy()
+                K_inh = K_inh.cpu().data.numpy()
+                S, K_inh = lateral_inh(S[0], V[0], K_inh)
+                S = torch.from_numpy(S)
+                S = S.float()
+                K_inh = torch.from_numpy(K_inh)
+                K_inh = K_inh.float()
+                layers[l]['S'][t,:,:,:] = S
+                layers[l]['K_inh'] = K_inh
+            elif network[l].__class__.__name__ == "pool1":
+                S = layers[l-1]['S'][t,:,:,:].unsqueeze(0)
+                S = S.permute(0,3,1,2).to('cuda')
+                S = network[l](S)
+                S = S.float()
+            elif network[l].__class__.__name__ == "conv2":
+                S = layers[l-1]['S'][t,:,:,:].unsqueeze(0)
+                S = S.permute(0,3,1,2).to('cuda')
+                V = network[l](S)
+                V = V.permute(0, 3, 2, 1)
+                S = (V > torch.Tensor([10.0]).to('cuda')).float()*1
+                N, C, H, W = V.shape
+                layers[l]['V'][t,:,:,:] = V[0]
+                S = S.cpu().data.numpy()
+                V = V.cpu().data.numpy()
+                K_inh = K_inh.cpu().data.numpy()
+                S, K_inh = lateral_inh(S[0], V[0], K_inh)
+                S = torch.from_numpy(S)
+                S = S.float()
+                K_inh = torch.from_numpy(K_inh)
+                K_inh = K_inh.float()
+                layers[l]['S'][t,:,:,:] = S
+                layers[l]['K_inh'] = K_inh
+            elif network[l].__class__.__name__ == "pool2":
+                S = layers[l-1]['S'][t,:,:,:].unsqueeze(0)
+                S = S.permute(0,3,1,2).to('cuda')
+                S = network[l](S)
+                S = S.float()
+            elif network[l].__class__.__name__ == "conv3":
+                S = layers[l-1]['S'][t,:,:,:].unsqueeze(0)
+                S = S.permute(0,3,1,2).to('cuda')
+                V = network[l](S)
+                V = V.permute(0, 3, 2, 1)
+                S = (V > torch.Tensor([10.0]).to('cuda')).float()*1
+                N, C, H, W = V.shape
+                layers[l]['V'][t,:,:,:] = V[0]
+                S = S.cpu().data.numpy()
+                V = V.cpu().data.numpy()
+                K_inh = K_inh.cpu().data.numpy()
+                S, K_inh = lateral_inh(S[0], V[0], K_inh)
+                S = torch.from_numpy(S)
+                S = S.float()
+                K_inh = torch.from_numpy(K_inh)
+                K_inh = K_inh.float()
+                layers[l]['S'][t,:,:,:] = S
+                layers[l]['K_inh'] = K_inh
+            else:
+                print("The layer does not exist")
+        ### start the STDP Learning 
