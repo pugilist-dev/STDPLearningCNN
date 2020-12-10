@@ -12,13 +12,29 @@ from skimage.filters import difference_of_gaussians
 from PIL import Image
 
 
-def DoG(image_name, Test= False):
+def DoG(image_name, Test= False, perceptron = False):
     train_path = "/home/rajiv/Documents/lectures/BIC/project_conv_sdnn/datasets/TrainingSet/Face/"
-    test_path = "/home/rajiv/Documents/lectures/BIC/project_conv_sdnn/datasets/TestingSet/Face/"
-    image = np.asarray(Image.open(train_path+image_name))
-    image = image[34:434, 154:554]
-    filtered_image = difference_of_gaussians(image, 1.5)
-    filtered_image = np.expand_dims(filtered_image, axis = 0)
-    filtered_image = np.expand_dims(filtered_image, axis = 0)
-    return filtered_image
+    test_path = "/home/rajiv/Documents/lectures/BIC/project_conv_sdnn/datasets/TestingSet/faces_labeled/"
+    perceptron_path = "/home/rajiv/Documents/lectures/BIC/project_conv_sdnn/datasets/TrainingSet/faces_labeled/"
+    if Test:
+        image = Image.open(test_path + image_name)
+        image = np.array(image.resize((400,400), Image.BILINEAR))
+        filtered_image = difference_of_gaussians(image, 1.5)
+        filtered_image = np.expand_dims(filtered_image, axis = 0)
+        filtered_image = np.expand_dims(filtered_image, axis = 0)
+        return filtered_image
+    elif perceptron:
+        image = Image.open(perceptron_path + image_name)
+        image = np.array(image.resize((400,400), Image.BILINEAR))
+        filtered_image = difference_of_gaussians(image, 1.5)
+        filtered_image = np.expand_dims(filtered_image, axis = 0)
+        filtered_image = np.expand_dims(filtered_image, axis = 0)
+        return filtered_image
+    else:
+        image = Image.open(train_path+image_name)
+        image = np.array(image.resize((400,400), Image.BILINEAR))
+        filtered_image = difference_of_gaussians(image, 1.5)
+        filtered_image = np.expand_dims(filtered_image, axis = 0)
+        filtered_image = np.expand_dims(filtered_image, axis = 0)
+        return filtered_image
     
